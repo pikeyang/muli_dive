@@ -1,11 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" remoteFilesAllowedToDisappearOnAutoupload="false">
+  <component name="PublishConfigData" autoUpload="Always" serverName="root@region-11.autodl.com:11324" remoteFilesAllowedToDisappearOnAutoupload="false">
     <serverData>
       <paths name="root@hz-t3.matpool.com:26197">
         <serverdata>
           <mappings>
             <mapping local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="root@region-11.autodl.com:11324">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/root/autodl-tmp/dive" local="$PROJECT_DIR$" />
           </mappings>
         </serverdata>
       </paths>
@@ -31,5 +38,6 @@
         </serverdata>
       </paths>
     </serverData>
+    <option name="myAutoUpload" value="ALWAYS" />
   </component>
 </project>

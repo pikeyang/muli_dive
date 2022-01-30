@@ -1,44 +1,53 @@
 import torch
+from torch import nn
+from torch.nn import functional as F
 import torchvision
-import torch.nn as nn
 import time
-from matplotlib import pyplot as plt
-import matplotlib_inline.backend_inline as mat_back
 
 
-def use_svg_display():
-    mat_back.set_matplotlib_formats('svg')
+class Residual(nn.Module):
+    def __init__(self, input_channel, num_channel,
+                 use_1x1conv=False, stride=1):
+
+        super().__init__()
+
+        self.conv1 = nn.Conv2d(in_channels=input_channel, out_channels=num_channel,
+                               kernel_size=3, padding=1,
+                               stride=stride)  # use stride to down sampling, this stride correspond to conv3's stride
+
+        self.conv2 = nn.Conv2d(in_channels=num_channel, out_channels=num_channel,
+                               kernel_size=3, padding=1)
+
+        if use_1x1conv:
+            self.conv3 = nn.Conv2d(in_channels=input_channel, out_channels=num_channel,
+                                   kernel_size=1, stride=stride)
+        else:
+            self.conv3 = None
+
+        self.bn1 = nn.BatchNorm2d(num_channel)
+        self.bn2 = nn.BatchNorm2d(num_channel)
+
+    def forward(self, X):
+        Y = F.relu(self.bn1(self.conv1(X)))
+        Y = self.bn2(self.conv2(Y))
+        if self.conv3:
+            X = self.conv3(X)
+        Y += X
+        return F.relu(Y)
 
 
-def set_figsize(figsize=(3.5, 2.5)):
-    use_svg_display()
+def resnet_block(input_channel, num_channel, num_residual, first_block=False):
+    blk = []
 
-    plt.rcParams['figure.figsize'] = figsize
-
-
-def show_images(imgs, num_rows, num_cols, scale=2):
-    figsize = (num_cols * scale, num_rows * scale)
-    _, axes = plt.subplots(num_rows, num_cols, figsize=figsize)
-    for i in range(num_rows):
-        for j in range(num_cols):
-            axes[i][j].imshow(imgs[i * num_cols + j])
-            axes[i][j].axes.get_xaxis().set_visible(False)
-            axes[i][j].axes.get_yaxis().set_visible(False)
-    return axes
+    for i in range(num_residual):
+        if i == 0 and not first_block:
+            blk.append(Residual(input_channel, num_channel, use_1x1conv=True, stride=2))
+        else:
+            blk.append(Residual(num_channel, num_channel))
+    return blk
 
 
-def apply(img, aug, num_rows=2, num_cols=4, scale=1.5):
-    Y = [aug(img) for _ in range(num_rows * num_cols)]
-    show_images(Y, num_rows, num_cols, scale)
-
-
-def get_fashion_mnist_labels(labels):
-    text_labels = ['t-shirt', 'trouser', 'pullover', 'dress', 'coat',
-                   'sandal', 'shirt', 'sneaker', 'bag', 'ankle boot']
-    return [text_labels[int(i)] for i in labels]
-
-
-def load_data_fashion_mnist(batch_size, resize=None, root='./dataset/FashionMNIST'):
+def load_data_fashion_mnist(batch_size, resize=None, root='../dataset/FashionMNIST'):
     """Download the fashion mnist dataset and then load into memory."""
     trans = []
     if resize:
@@ -55,12 +64,6 @@ def load_data_fashion_mnist(batch_size, resize=None, root='./dataset/FashionMNIS
     test_iter = torch.utils.data.DataLoader(mnist_test, batch_size=batch_size, shuffle=False, num_workers=4)
 
     return train_iter, test_iter
-
-
-def sgd(params, lr, batch_size):
-    for param in params:
-        #  Modifying param with param.data will not be passed to the calculation diagram
-        param.data -= lr * param.grad / batch_size
 
 
 def evaluate_accuracy(data_iter, net, device=None):
@@ -82,6 +85,12 @@ def evaluate_accuracy(data_iter, net, device=None):
                     acc_sum += (net(X).argmax(dim=1) == y).float().sum().item()
             n += y.shape[0]
     return acc_sum / n
+
+
+def sgd(params, lr, batch_size):
+    for param in params:
+        #  Modifying param with param.data will not be passed to the calculation diagram
+        param.data -= lr * param.grad / batch_size
 
 
 def train_func(net: nn.Module, train_iter, test_iter, loss, num_epoch: int, batch_size: int, device,
@@ -144,13 +153,22 @@ def train_func(net: nn.Module, train_iter, test_iter, loss, num_epoch: int, batc
               % (epoch + 1, train_loss_sum / n, train_acc_sum / n, test_acc, time.time() - start))
 
 
-class FlattenLayer(nn.Module):
-    def __init__(self):
-        super(FlattenLayer, self).__init__()
+if __name__ == "__main__":
+    b1 = nn.Sequential(nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3),
+                       nn.BatchNorm2d(64), nn.ReLU(),
+                       nn.MaxPool2d(kernel_size=3, stride=2, padding=1))
 
-    def forward(self, x):
-        return x.view(x.shape[0], -1)
+    b2 = nn.Sequential(*resnet_block(64, 64, num_residual=2, first_block=True))  # without 1x1
+    b3 = nn.Sequential(*resnet_block(64, 128, num_residual=2))
+    b4 = nn.Sequential(*resnet_block(128, 256, num_residual=2))
+    b5 = nn.Sequential(*resnet_block(256, 512, num_residual=2))
 
+    net = nn.Sequential(b1, b2, b3, b4, b5,
+                        nn.AdaptiveAvgPool2d((1, 1)),
+                        nn.Flatten(), nn.Linear(512, 10))
 
-if __name__ == '__main__':
-    pass
+    lr, num_epochs, batch_size = 0.05, 10, 64
+    train_iter, test_iter = load_data_fashion_mnist(batch_size, resize=95)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    optimizer = torch.optim.Adam(net.parameters(), lr=lr)
+    train_func(net, train_iter, test_iter, None, num_epochs, batch_size, device, lr=lr, optimizer=optimizer)

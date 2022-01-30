@@ -1,0 +1,17 @@
+device: "cuda"
+---
+data:
+  train_path: "./train"
+  test_path: "./test"
+  sr: 16000
+  window: 0.025
+---
+model:
+  hidden: 100
+  nun_layer: 3
+  embedding_size: 256
+  model_path: "./model"
+---
+train:
+  - batch: 128
+  - lr: 0.001
